@@ -1,0 +1,17 @@
+# Dev Env
+.vscode
+
+# NPM
+node_modules
+package-lock.json
+
+# Hardhat
+artifacts
+cache
+abi
+
+# Typechain
+typechain
+
+# Scripts
+deploy/deployments
