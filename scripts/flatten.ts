@@ -3,17 +3,6 @@ import fs from 'fs';
 
 import { getArg } from './cmdUtils';
 
-const lb = '\r\n';
-let disableLog = false;
-
-const getArgs = (_args: string[]) => {
-  return {
-    file: getArg(_args, '--file'),
-    out: getArg(_args, '--out'),
-    outAuto: getArg(_args, '--outAuto'),
-  };
-};
-
 export interface ConfigDependency {
   [key: string]: string;
 }
@@ -63,9 +52,39 @@ export interface FlatJSON {
   };
 }
 
-export const flatten = async (_silent = true, _isYarn = true) => {
-  const args = getArgs(process.argv.slice(2));
-  disableLog = _silent;
+export interface FlattenArgs {
+  file: string | null | undefined;
+  out: string | null | undefined;
+  outAuto: string | null | undefined;
+}
+
+const getArgs = (_args: string[]): FlattenArgs => {
+  return {
+    file: getArg(_args, '--file'),
+    out: getArg(_args, '--out'),
+    outAuto: getArg(_args, '--outAuto'),
+  };
+};
+
+const lb = '\r\n';
+
+const flattenConfig = {
+  disableLog: true,
+  silentResolve: true,
+};
+
+export const flatten = (_silent = true, _isYarn = true) => {
+  flattenFile(getArgs(process.argv.slice(2)), _silent, _isYarn);
+  process.exit(0);
+};
+
+export const batchFlatten = (args: FlattenArgs[], _silent = true, _isYarn = true) => {
+  for (let a of args) flattenFile(a, _silent, _isYarn);
+  process.exit(0);
+};
+
+const flattenFile = (args: FlattenArgs, _silent = true, _isYarn = true) => {
+  flattenConfig.disableLog = _silent;
 
   //start
   log(chalk.blue(`============================================================`));
@@ -92,9 +111,10 @@ export const flatten = async (_silent = true, _isYarn = true) => {
   //resolve imports
   const dict: ImportInfo[] = [];
   log(chalk.yellow('- Resolving'));
-  disableLog = true;
+  const fc_dl_before = flattenConfig.disableLog;
+  flattenConfig.disableLog = flattenConfig.silentResolve;
   const d = resolveFileImports(resolveCfg, args.file, dict);
-  disableLog = false;
+  flattenConfig.disableLog = fc_dl_before;
 
   //dependency list
   log(chalk.yellow('- Dependency'));
@@ -139,17 +159,17 @@ export const flatten = async (_silent = true, _isYarn = true) => {
     //json
     log(chalk.yellow(`- Standard-Json-Input to [${fullOut}.json]`));
     makeJsonFile(fullOut + '.json', d, dict);
+
+    //minimal output when silent
+    if (flattenConfig.disableLog) console.log(chalk.yellow(`- flattened [${args.file}]`));
   }
 
   //end
   log(chalk.blue(`============================================================`));
-  process.exit(0);
 };
 
 const log = (_text: any) => {
-  if (!disableLog) {
-    console.log(_text);
-  }
+  if (!flattenConfig.disableLog) console.log(_text);
 };
 
 const getResolveConfig = (): ResolveConfig => {

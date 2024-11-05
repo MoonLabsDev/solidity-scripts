@@ -1,6 +1,6 @@
 {
   "name": "@moonlabs/solidity-scripts",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": false,
   "dependencies": {
     "@openzeppelin/contracts": "^4.2.0"
