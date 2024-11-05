@@ -12,5 +12,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["./scripts", "./tests"]
+  "include": ["./scripts", "./tests"],
+  "outDir": "dist"
 }

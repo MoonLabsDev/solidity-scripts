@@ -1,4 +1,5 @@
-import hre, { ethers } from 'hardhat';
+import hre from 'hardhat';
+import '@nomicfoundation/hardhat-ethers';
 import { TransactionResponse, ContractTransactionResponse, BaseContract, resolveAddress } from 'ethers';
 import chalk from 'chalk';
 import fs from 'fs';
@@ -24,6 +25,17 @@ interface ContractDeploymentState {
   deployments: ContractDeploymentInfo[];
   calls: ContractCallInfo[];
   sends: ContractSendInfo[];
+}
+
+type SerializedType = boolean | number | string | SerializedStruct | SerializedTypeInfo;
+
+interface SerializedStruct {
+  [key: string]: SerializedType;
+}
+
+interface SerializedTypeInfo {
+  value: string | SerializedStruct;
+  $type: 'BigInt' | 'struct';
 }
 
 export class DeployHelper {
@@ -69,7 +81,7 @@ export class DeployHelper {
     if (d !== null) {
       //check for address / mined tx
       if (d.address === undefined) {
-        const tx = await ethers.provider.getTransaction(d.txHash);
+        const tx = await hre.ethers.provider.getTransaction(d.txHash);
         const r = await tx!.wait();
         this.setDeploymentAddress(r!.contractAddress!);
         d = this.findDeployment(_id)!;
@@ -79,7 +91,7 @@ export class DeployHelper {
       if (d.address !== undefined) {
         //load deployed
         this.log(chalk.blue(`- loading [${chalk.white(_log ?? _name)}]`));
-        const c = await ethers.getContractAt(_name, d.address);
+        const c = await hre.ethers.getContractAt(_name, d.address);
         this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
         return c as T;
       }
@@ -104,7 +116,7 @@ export class DeployHelper {
     if (c !== null) {
       //return previous result
       this.log(chalk.blue(`- remembering [${chalk.white(_log)}]`));
-      return c.result;
+      return this.deserializeCallResult(c.result);
     }
 
     //call
@@ -123,7 +135,7 @@ export class DeployHelper {
       this.log(chalk.blue(`- already executed [${chalk.white(_log)}]`));
       //check for mined tx
       if (!s.success) {
-        const tx = await ethers.provider.getTransaction(s.txHash);
+        const tx = await hre.ethers.provider.getTransaction(s.txHash);
         try {
           const r = await tx!.wait();
           if (r?.status === 1) {
@@ -201,7 +213,7 @@ export class DeployHelper {
     if (i === null) {
       i = {
         id: _id,
-        result: _result,
+        result: this.serializeCallResult(_result),
       };
       this.state.calls.push(i);
     }
@@ -276,6 +288,56 @@ export class DeployHelper {
 
   public closeCategory = () => {
     this.decreaseTabLevel();
+  };
+
+  /////////////////
+  // Serialize / Deserialize Calls
+  /////////////////
+
+  private serializeCallResult = (_data: any): SerializedType => {
+    // value
+    if (typeof _data === 'number' || typeof _data === 'string' || typeof _data === 'boolean') {
+      return _data;
+    } else if (_data instanceof BigInt || typeof _data === 'bigint') {
+      return {
+        value: _data.toString(10),
+        $type: 'BigInt',
+      };
+    } else {
+      // struct
+      const keys = Object.keys(_data);
+      const struct: SerializedStruct = {};
+      for (let k of keys) struct[k] = this.serializeCallResult(_data[k]);
+      return {
+        value: struct,
+        $type: 'struct',
+      };
+    }
+  };
+
+  private deserializeCallResult = (_data: SerializedType): any => {
+    if (typeof _data === 'object') {
+      // complex type
+      const ct = _data as SerializedTypeInfo;
+      switch (ct.$type) {
+        case 'BigInt':
+          return BigInt(ct.value as string);
+
+        case 'struct': {
+          const obj: SerializedStruct = {};
+          const struct = ct.value as SerializedStruct;
+          const keys = Object.keys(struct);
+          for (let k of keys) {
+            obj[k] = this.deserializeCallResult(struct[k]);
+          }
+          return obj;
+        }
+      }
+      return null;
+    } else {
+      // simple type
+      return _data;
+    }
   };
 
   /////////////////
