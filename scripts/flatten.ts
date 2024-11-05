@@ -56,13 +56,25 @@ export interface FlattenArgs {
   file: string | null | undefined;
   out: string | null | undefined;
   outAuto: string | null | undefined;
+  evmVersion: string | null | undefined;
 }
+
+export type SolidityEVMVersion =
+  | 'petersburg'
+  | 'istanbul'
+  | 'berlin'
+  | 'london'
+  | 'paris'
+  | 'shanghai'
+  | 'cancun'
+  | 'prague';
 
 const getArgs = (_args: string[]): FlattenArgs => {
   return {
     file: getArg(_args, '--file'),
     out: getArg(_args, '--out'),
     outAuto: getArg(_args, '--outAuto'),
+    evmVersion: getArg(_args, '--evmVersion'),
   };
 };
 
@@ -78,8 +90,13 @@ export const flatten = (_silent = true, _isYarn = true) => {
   process.exit(0);
 };
 
-export const batchFlatten = (args: FlattenArgs[], _silent = true, _isYarn = true) => {
-  for (let a of args) flattenFile(a, _silent, _isYarn);
+export const batchFlatten = (
+  _args: FlattenArgs[],
+  _evmVersion: SolidityEVMVersion = 'paris',
+  _silent = true,
+  _isYarn = true
+) => {
+  for (let a of _args) flattenFile({ ...a, evmVersion: _evmVersion }, _silent, _isYarn);
   process.exit(0);
 };
 
@@ -158,7 +175,7 @@ const flattenFile = (args: FlattenArgs, _silent = true, _isYarn = true) => {
 
     //json
     log(chalk.yellow(`- Standard-Json-Input to [${fullOut}.json]`));
-    makeJsonFile(fullOut + '.json', d, dict);
+    makeJsonFile(fullOut + '.json', !args.evmVersion ? 'paris' : (args.evmVersion as SolidityEVMVersion), d, dict);
 
     //minimal output when silent
     if (flattenConfig.disableLog) console.log(chalk.yellow(`- flattened [${args.file}]`));
@@ -219,7 +236,13 @@ const makeShortImports = (_data: ResolvedImportInfo) => {
   return _data.requires.map(r => `import "${getFileName(r)}"`).join(lb);
 };
 
-const makeJsonFile = (_target: string, _data: ResolvedImportInfo, _importDictionary: ImportInfo[]) => {
+//docs: https://docs.soliditylang.org/en/latest/using-the-compiler.html#input-description
+const makeJsonFile = (
+  _target: string,
+  _evmVersion: SolidityEVMVersion,
+  _data: ResolvedImportInfo,
+  _importDictionary: ImportInfo[]
+) => {
   //make default
   const json: FlatJSON = {
     language: 'Solidity',
@@ -231,7 +254,7 @@ const makeJsonFile = (_target: string, _data: ResolvedImportInfo, _importDiction
         enabled: true,
         runs: 200,
       },
-      evmVersion: '<VERSION>',
+      evmVersion: _evmVersion,
     },
   };
 
