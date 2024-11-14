@@ -64,7 +64,48 @@ export class DeployHelper {
     if (this.chainId === undefined) throw 'Invalid Network';
 
     //load
-    await this.load();
+    await this.loadDeploymentInfo();
+  };
+
+  public load = async <T>(_id: string, _name: string): Promise<T> => {
+    //check if id exist
+    let d = this.findDeployment(_id);
+    if (d !== null) {
+      //check for address / mined tx
+      if (d.address === undefined) {
+        const tx = await hre.ethers.provider.getTransaction(d.txHash);
+        const r = await tx!.wait();
+        this.setDeploymentAddress(r!.contractAddress!);
+        d = this.findDeployment(_id)!;
+      }
+
+      //check if it was deployed
+      if (d.address !== undefined) {
+        //load deployed
+        this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
+        const c = await hre.ethers.getContractAt(_name, d.address);
+        this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
+        return c as T;
+      }
+    }
+
+    // could not load
+    this.log(chalk.red(`  - No deployment found`));
+    throw 'No deployment found';
+  };
+
+  public loadWithAddress = async <T>(_address: string, _name: string): Promise<T> => {
+    //load deployed
+    this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
+    try {
+      const c = await hre.ethers.getContractAt(_name, _address);
+      this.log(chalk.blue(`  - loaded @ [${chalk.white(_address)}]`));
+      return c as T;
+    } catch {}
+
+    // could not load
+    this.log(chalk.red(`  - Could not load contract`));
+    throw 'Could not load contract';
   };
 
   public deploy = async <T>(
@@ -187,7 +228,7 @@ export class DeployHelper {
       };
       this.state.deployments.push(i);
     }
-    this.save();
+    this.saveDeploymentInfo();
     return i;
   };
 
@@ -196,7 +237,7 @@ export class DeployHelper {
     if (i !== null) {
       i.address = _address;
     }
-    this.save();
+    this.saveDeploymentInfo();
     return i;
   };
 
@@ -217,7 +258,7 @@ export class DeployHelper {
       };
       this.state.calls.push(i);
     }
-    this.save();
+    this.saveDeploymentInfo();
     return i;
   };
 
@@ -239,7 +280,7 @@ export class DeployHelper {
       };
       this.state.sends.push(i);
     }
-    this.save();
+    this.saveDeploymentInfo();
     return i;
   };
 
@@ -247,7 +288,7 @@ export class DeployHelper {
     let i = this.findSend(_id);
     if (i !== null) {
       i.success = true;
-      this.save();
+      this.saveDeploymentInfo();
     }
     return i;
   };
@@ -344,7 +385,7 @@ export class DeployHelper {
   // Save / Load
   /////////////////
 
-  public reset = () => {
+  public resetDeploymentInfo = () => {
     //reset state
     this.state = {
       deployments: [],
@@ -353,8 +394,8 @@ export class DeployHelper {
     };
   };
 
-  public load = () => {
-    this.reset();
+  public loadDeploymentInfo = () => {
+    this.resetDeploymentInfo();
     if (this.chainId === 31337) return; //don't load on hardhat node
 
     try {
@@ -366,7 +407,7 @@ export class DeployHelper {
     } catch {}
   };
 
-  public save = () => {
+  public saveDeploymentInfo = () => {
     const data = JSON.stringify(this.state, null, 2);
     fs.mkdirSync(this.generateSaveFilePath(), { recursive: true });
     fs.writeFileSync(this.generateSaveFileName(), data);

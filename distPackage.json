@@ -1,6 +1,7 @@
 {
   "name": "@moonlabs/solidity-scripts",
-  "version": "0.2.1",
+  "version": "0.2.2",
+  "description": "A collection of useful scripts for solidity & hardhat",
   "private": false,
   "dependencies": {
     "@openzeppelin/contracts": "^4.2.0"
