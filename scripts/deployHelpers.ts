@@ -74,9 +74,11 @@ export class DeployHelper {
       //check for address / mined tx
       if (d.address === undefined) {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
-        const r = await tx!.wait();
-        this.setDeploymentAddress(r!.contractAddress!);
-        d = this.findDeployment(_id)!;
+        if (tx !== null) {
+          const r = await tx!.wait();
+          this.setDeploymentAddress(r!.contractAddress!);
+          d = this.findDeployment(_id)!;
+        }
       }
 
       //check if it was deployed
@@ -123,9 +125,11 @@ export class DeployHelper {
       //check for address / mined tx
       if (d.address === undefined) {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
-        const r = await tx!.wait();
-        this.setDeploymentAddress(r!.contractAddress!);
-        d = this.findDeployment(_id)!;
+        if (tx !== null) {
+          const r = await tx!.wait();
+          this.setDeploymentAddress(r!.contractAddress!);
+          d = this.findDeployment(_id)!;
+        }
       }
 
       //check if it was deployed
@@ -177,17 +181,19 @@ export class DeployHelper {
       //check for mined tx
       if (!s.success) {
         const tx = await hre.ethers.provider.getTransaction(s.txHash);
-        try {
-          const r = await tx!.wait();
-          if (r?.status === 1) {
-            this.setSendSuccess(_id);
-            return true;
+        if (tx !== null) {
+          try {
+            const r = await tx!.wait();
+            if (r?.status === 1) {
+              this.setSendSuccess(_id);
+              return true;
+            }
+            throw 'Tx reverted';
+          } catch {
+            this.log(chalk.red(`  - reverted`));
+            // try again
+            retry = true;
           }
-          throw 'Tx reverted';
-        } catch {
-          this.log(chalk.red(`  - reverted`));
-          // try again
-          retry = true;
         }
       } else return true;
     }
