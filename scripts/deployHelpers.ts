@@ -46,7 +46,7 @@ interface SerializedTypeInfo {
 export class DeployHelper {
   public chainId: number;
   private state: ContractDeploymentState;
-  private deployedLog: DeployedContractLog[];
+  private deployedLog: string[];
   private level: number;
   private tab: string;
   public silent: boolean;
@@ -257,12 +257,8 @@ export class DeployHelper {
     if (i !== null) i.address = _address;
 
     // deployed log
-    if (
-      _deploymentString !== null &&
-      _address !== undefined &&
-      !this.deployedLog.find(d => d.name === _deploymentString)
-    )
-      this.deployedLog.push({ name: _deploymentString, address: _address });
+    if (_deploymentString !== null && _address !== undefined)
+      this.deployedLog.push(`${_deploymentString} = [${_address}]`);
 
     this.saveDeploymentInfo();
     return i;
@@ -432,15 +428,6 @@ export class DeployHelper {
       const j = JSON.parse(data.toString());
       if (j !== undefined && j.calls !== undefined && j.sends !== undefined && j.deployments !== undefined) {
         this.state = j;
-      }
-    } catch {}
-
-    // deployed
-    try {
-      const data = fs.readFileSync(this.generateDeployFileName());
-      const j = JSON.parse(data.toString());
-      if (j !== undefined && Array.isArray(j)) {
-        this.deployedLog = j;
       }
     } catch {}
   };
