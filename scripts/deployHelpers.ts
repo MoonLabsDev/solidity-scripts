@@ -27,6 +27,11 @@ interface ContractDeploymentState {
   sends: ContractSendInfo[];
 }
 
+interface DeployedContractLog {
+  name: string;
+  address: string;
+}
+
 type SerializedType = boolean | number | string | SerializedStruct | SerializedTypeInfo;
 
 interface SerializedStruct {
@@ -41,6 +46,7 @@ interface SerializedTypeInfo {
 export class DeployHelper {
   public chainId: number;
   private state: ContractDeploymentState;
+  private deployedLog: DeployedContractLog[];
   private level: number;
   private tab: string;
   public silent: boolean;
@@ -52,6 +58,7 @@ export class DeployHelper {
     this.silent = false;
     this.throwOnRevert = true;
     this.chainId = hre.network.config.chainId as number;
+    this.deployedLog = [];
     this.state = {
       deployments: [],
       calls: [],
@@ -76,7 +83,7 @@ export class DeployHelper {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
         if (tx !== null) {
           const r = await tx!.wait();
-          this.setDeploymentAddress(r!.contractAddress!);
+          this.setDeploymentAddress(_id, null, r!.contractAddress!);
           d = this.findDeployment(_id)!;
         }
       }
@@ -127,7 +134,7 @@ export class DeployHelper {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
         if (tx !== null) {
           const r = await tx!.wait();
-          this.setDeploymentAddress(r!.contractAddress!);
+          this.setDeploymentAddress(_id, _log ?? _name, r!.contractAddress);
           d = this.findDeployment(_id)!;
         }
       }
@@ -149,7 +156,7 @@ export class DeployHelper {
 
     //wait until deployed
     const c = await tx.waitForDeployment();
-    this.setDeploymentAddress(_id, await resolveAddress(c.target));
+    this.setDeploymentAddress(_id, _log ?? _name, await resolveAddress(c.target));
     this.log(chalk.blue(`  - deployed @ [${chalk.white(await resolveAddress(c.target))}]`));
 
     return c;
@@ -238,11 +245,25 @@ export class DeployHelper {
     return i;
   };
 
-  private setDeploymentAddress = (_id: string, _address?: string) => {
+  private setDeploymentAddress = (
+    _id: string,
+    _deploymentString: string | null,
+    _address?: string | null
+  ): ContractDeploymentInfo | null => {
+    if (_address === null) return null;
+
+    // info
     let i = this.findDeployment(_id);
-    if (i !== null) {
-      i.address = _address;
-    }
+    if (i !== null) i.address = _address;
+
+    // deployed log
+    if (
+      _deploymentString !== null &&
+      _address !== undefined &&
+      !this.deployedLog.find(d => d.name === _deploymentString)
+    )
+      this.deployedLog.push({ name: _deploymentString, address: _address });
+
     this.saveDeploymentInfo();
     return i;
   };
@@ -393,6 +414,7 @@ export class DeployHelper {
 
   public resetDeploymentInfo = () => {
     //reset state
+    this.deployedLog = [];
     this.state = {
       deployments: [],
       calls: [],
@@ -404,26 +426,40 @@ export class DeployHelper {
     this.resetDeploymentInfo();
     if (this.chainId === 31337) return; //don't load on hardhat node
 
+    // info
     try {
-      const data = fs.readFileSync(this.generateSaveFileName());
+      const data = fs.readFileSync(this.generateInfoFileName());
       const j = JSON.parse(data.toString());
       if (j !== undefined && j.calls !== undefined && j.sends !== undefined && j.deployments !== undefined) {
         this.state = j;
       }
     } catch {}
+
+    // deployed
+    try {
+      const data = fs.readFileSync(this.generateDeployFileName());
+      const j = JSON.parse(data.toString());
+      if (j !== undefined && Array.isArray(j)) {
+        this.deployedLog = j;
+      }
+    } catch {}
   };
 
   public saveDeploymentInfo = () => {
-    const data = JSON.stringify(this.state, null, 2);
     fs.mkdirSync(this.generateSaveFilePath(), { recursive: true });
-    fs.writeFileSync(this.generateSaveFileName(), data);
+    fs.writeFileSync(this.generateInfoFileName(), JSON.stringify(this.state, null, 2));
+    fs.writeFileSync(this.generateDeployFileName(), JSON.stringify(this.deployedLog, null, 2));
   };
 
   private generateSaveFilePath = () => {
     return `./deploy/deployments/${this.chainId}`;
   };
 
-  private generateSaveFileName = () => {
+  private generateInfoFileName = () => {
     return `${this.generateSaveFilePath()}/info.json`;
+  };
+
+  private generateDeployFileName = () => {
+    return `${this.generateSaveFilePath()}/deployed.json`;
   };
 }
