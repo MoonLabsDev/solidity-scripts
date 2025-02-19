@@ -473,11 +473,17 @@ const getFileImports = (_resolveCfg: ResolveConfig, _file: string): FileImport =
     content.splice(content.length - 1, 1);
   }
 
+  //remove multiple entries
+  const uniqueImports: string[] = [];
+  for (let n = 0; n < imports.length; n++) {
+    if (!uniqueImports.includes(imports[n])) uniqueImports.push(imports[n]);
+  }
+
   //return
   return {
     content: content.join('\r\n'),
     meta: meta.join('\r\n'),
-    imports: imports,
+    imports: uniqueImports,
     inherits: findInheritance(read.toString()),
   };
 };

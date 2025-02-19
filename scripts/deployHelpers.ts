@@ -4,32 +4,27 @@ import { TransactionResponse, ContractTransactionResponse, BaseContract, resolve
 import chalk from 'chalk';
 import fs from 'fs';
 
-interface ContractDeploymentInfo {
+export interface ContractDeploymentInfo {
   id: string;
   txHash: string;
   address?: string;
 }
 
-interface ContractCallInfo {
+export interface ContractCallInfo {
   id: string;
   result: any;
 }
 
-interface ContractSendInfo {
+export interface ContractSendInfo {
   id: string;
   txHash: string;
   success: boolean;
 }
 
-interface ContractDeploymentState {
+export interface ContractDeploymentState {
   deployments: ContractDeploymentInfo[];
   calls: ContractCallInfo[];
   sends: ContractSendInfo[];
-}
-
-interface DeployedContractLog {
-  name: string;
-  address: string;
 }
 
 type SerializedType = boolean | number | string | SerializedStruct | SerializedTypeInfo;
