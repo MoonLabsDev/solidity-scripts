@@ -27,7 +27,7 @@ interface ContractDeploymentState {
 }
 
 export interface SubgraphArgs {
-  contracts: string | null | undefined;
+  contracts: string | string[] | null | undefined;
   template: string | null | undefined;
   target: string | null | undefined;
   chainId: string | null | undefined;
@@ -52,14 +52,14 @@ export const generateSubgraphFileFromTemplate = (_silent: boolean = false) => {
 };
 
 export const generateSubgraphFileFromTemplateWithConfig = (
-  _contractsFolder: string,
+  _contractsFolders: string | string[],
   _subgraphTemplate: string,
   _subgraphTarget: string,
   _silent: boolean = false
 ) => {
   // get args
   const args = getArgs(process.argv.slice(2));
-  args.contracts = _contractsFolder;
+  args.contracts = _contractsFolders;
   args.template = _subgraphTemplate;
   args.target = _subgraphTarget;
 
@@ -103,15 +103,15 @@ const run = (_args: SubgraphArgs, _silent: boolean) => {
 };
 
 export class SubgraphHelper {
-  private contractsFolder: string;
+  private contractsFolder: string | string[];
   private subgraphTemplate: string;
   private subgraphTarget: string;
   private level: number;
   private tab: string;
   public silent: boolean;
 
-  public constructor(_contractsFolder: string, _subgraphTemplate: string, _subgraphTarget: string) {
-    this.contractsFolder = _contractsFolder;
+  public constructor(_contractsFolder: string | string[], _subgraphTemplate: string, _subgraphTarget: string) {
+    this.contractsFolder = Array.isArray(_contractsFolder) ? _contractsFolder : [_contractsFolder];
     this.subgraphTemplate = _subgraphTemplate;
     this.subgraphTarget = _subgraphTarget;
     this.level = 0;
@@ -135,14 +135,24 @@ export class SubgraphHelper {
     this.log(chalk.blue(`  - loaded [${chalk.white('Subgraph Template')}]`));
 
     // open deployment
-    let deploymentData: ContractDeploymentState;
+    let deploymentData: ContractDeploymentState = { deployments: [], calls: [], sends: [] };
     this.log(chalk.blue(`- loading [${chalk.white('Deployment Info')}]`));
-    try {
-      const file = fs.readFileSync(`${this.contractsFolder}/deploy/deployments/${_chainId}/info.json`).toString();
-      deploymentData = JSON.parse(file);
-    } catch {
-      this.log(chalk.red(`  - No deployment found`));
-      throw 'No deployment found';
+    for (const contractsFolder of this.contractsFolder) {
+      this.log(chalk.blue(`   - loading [${chalk.white(contractsFolder)}]`));
+      try {
+        const file = fs.readFileSync(`${this.contractsFolder}/deploy/deployments/${_chainId}/info.json`).toString();
+        const d: ContractDeploymentState = JSON.parse(file);
+
+        // merge
+        deploymentData = {
+          deployments: [...deploymentData.deployments, ...d.deployments],
+          calls: [...deploymentData.calls, ...d.calls],
+          sends: [...deploymentData.sends, ...d.sends],
+        };
+      } catch {
+        this.log(chalk.red(`  - No deployment found`));
+        throw 'No deployment found';
+      }
     }
     this.log(chalk.blue(`  - loaded [${chalk.white('Deployment Info')}]`));
 

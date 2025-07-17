@@ -1,6 +1,6 @@
 {
   "name": "@moonlabs/solidity-scripts",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A collection of useful scripts for solidity, hardhat, subgraph",
   "private": false,
   "dependencies": {
