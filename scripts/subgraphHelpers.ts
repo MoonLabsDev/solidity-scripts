@@ -139,8 +139,9 @@ export class SubgraphHelper {
     this.log(chalk.blue(`- loading [${chalk.white('Deployment Info')}]`));
     for (const contractsFolder of this.contractsFolder) {
       this.log(chalk.blue(`   - loading [${chalk.white(contractsFolder)}]`));
+      const deploymentFile = `${contractsFolder}/deploy/deployments/${_chainId}/info.json`;
       try {
-        const file = fs.readFileSync(`${this.contractsFolder}/deploy/deployments/${_chainId}/info.json`).toString();
+        const file = fs.readFileSync(deploymentFile).toString();
         const d: ContractDeploymentState = JSON.parse(file);
 
         // merge
@@ -150,7 +151,7 @@ export class SubgraphHelper {
           sends: [...deploymentData.sends, ...d.sends],
         };
       } catch {
-        this.log(chalk.red(`  - No deployment found`));
+        this.log(chalk.red(`  - No deployment found [${deploymentFile}]`));
         throw 'No deployment found';
       }
     }
