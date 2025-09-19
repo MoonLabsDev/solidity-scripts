@@ -1,7 +1,17 @@
 {
   "name": "@moonlabs/solidity-scripts",
-  "version": "0.3.3",
+  "version": "0.3.8",
   "description": "A collection of useful scripts for solidity, hardhat, subgraph",
+  "author": "Moon Labs",
+  "license": "UNLICENSED",
+  "keywords": [
+    "solidity",
+    "hardhat",
+    "subgraph",
+    "ethers",
+    "flatten",
+    "ledger"
+  ],
   "private": false,
   "dependencies": {
     "@openzeppelin/contracts": "^4.2.0"
@@ -11,6 +21,7 @@
   },
   "peerDependencies": {
     "ethers": "^6.7.1",
-    "hardhat": "^2.22.3"
+    "hardhat": "^2.22.3",
+    "@ethersproject/hardware-wallets": "^5.8.0"
   }
 }

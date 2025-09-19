@@ -7,6 +7,7 @@ export default defineConfig({
     'scripts/cmdUtils.ts',
     'scripts/subgraphHelpers.ts',
     'scripts/testHelpers.ts',
+    'scripts/hardhatLedger.ts',
   ],
   format: ['cjs'], // Build for commonJS and ESmodules
   dts: true, // Generate declaration file (.d.ts)

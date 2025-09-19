@@ -1,16 +1,19 @@
 {
   "name": "@MoonLabsDev/solidity-scripts",
-  "version": "0.3.3",
+  "version": "0.3.8",
   "description": "",
   "author": "Moon Labs",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "(del-cli ./dist/* && tsup && copyfiles ./distPackage.json ./dist && node -e \"require('fs').rename('./dist/distPackage.json', './dist/package.json', ()=>{})\")",
+    "build": "(del-cli ./dist/* && tsup && copyfiles ./README.md ./dist && copyfiles ./distPackage.json ./dist && node -e \"require('fs').rename('./dist/distPackage.json', './dist/package.json', ()=>{})\")",
     "test": "hardhat test",
     "publish-lib": "(npm run build && cd dist && npm publish --access=public)"
   },
   "dependencies": {
     "typescript": "^5.2.2"
+  },
+  "peerDependencies": {
+    "@ethersproject/hardware-wallets": "^5.8.0"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
@@ -21,7 +24,7 @@
     "@openzeppelin/contracts": "^5.0.0",
     "@typechain/ethers-v6": "^0.5.1",
     "@types/chai": "^4.3.6",
-    "@types/mocha": "^10.0.1",
+    "@types/mocha": "^10.0.1",    
     "chai": "^4.3.8",
     "chalk": "^4.1.2",
     "copyfiles": "^2.4.1",
