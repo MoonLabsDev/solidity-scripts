@@ -1,6 +1,6 @@
 {
   "name": "@MoonLabsDev/solidity-scripts",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "",
   "author": "Moon Labs",
   "license": "UNLICENSED",
@@ -13,7 +13,8 @@
     "typescript": "^5.2.2"
   },
   "peerDependencies": {
-    "@ethersproject/hardware-wallets": "^5.8.0"
+    "@ethers-ext/signer-ledger": "^6.0.0-beta.1",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.11"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",

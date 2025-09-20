@@ -44,6 +44,13 @@ export enum DeployHelperWalletProvider {
   Ledger = 'ledger',
 }
 
+export interface DeployHelperOptions {
+  walletProvider?: DeployHelperWalletProvider;
+  silent?: boolean;
+  throwOnRevert?: boolean;
+  hardwareWalletAccountIndex?: number;
+}
+
 export class DeployHelper {
   public chainId: number;
   private state: ContractDeploymentState;
@@ -54,12 +61,17 @@ export class DeployHelper {
   public throwOnRevert: boolean;
   private walletProvider: DeployHelperWalletProvider;
   private walletProviderBefore: boolean = false;
+  private hardwareWalletAccountIndex: number;
+  private hardwareWalletAccountIndexBefore: number;
 
-  public constructor(walletProvider: DeployHelperWalletProvider = DeployHelperWalletProvider.Seed) {
+  public constructor(_options: DeployHelperOptions) {
     this.level = 0;
     this.tab = '  ';
-    this.silent = false;
-    this.throwOnRevert = true;
+    this.silent = _options.silent ?? false;
+    this.throwOnRevert = _options.throwOnRevert ?? true;
+    this.walletProvider = _options.walletProvider ?? DeployHelperWalletProvider.Seed;
+    this.hardwareWalletAccountIndex = _options.hardwareWalletAccountIndex ?? 0;
+    this.hardwareWalletAccountIndexBefore = this.hardwareWalletAccountIndex;
     this.chainId = hre.network.config.chainId as number;
     this.deployedLog = [];
     this.state = {
@@ -67,7 +79,6 @@ export class DeployHelper {
       calls: [],
       sends: [],
     };
-    this.walletProvider = walletProvider;
   }
 
   public init = async () => {
@@ -80,10 +91,12 @@ export class DeployHelper {
 
   private applyWalletProvider = () => {
     const hreAny = hre as any;
+    this.hardwareWalletAccountIndexBefore = hreAny.useHardwareWalletAccountIndex;
     switch (this.walletProvider) {
       case DeployHelperWalletProvider.Ledger:
         this.walletProviderBefore = hreAny.useLedger;
         hreAny.useLedger = true;
+        hreAny.useHardwareWalletAccountIndex = this.hardwareWalletAccountIndex;
         break;
     }
   };
@@ -95,6 +108,7 @@ export class DeployHelper {
         hreAny.useLedger = this.walletProviderBefore;
         break;
     }
+    hreAny.useHardwareWalletAccountIndex = this.hardwareWalletAccountIndexBefore;
   };
 
   public load = async <T>(_id: string, _name: string): Promise<T> => {
@@ -116,10 +130,15 @@ export class DeployHelper {
         //load deployed
         this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
         this.applyWalletProvider();
-        const c = await hre.ethers.getContractAt(_name, d.address);
-        this.resetWalletProvider();
-        this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
-        return c as T;
+        try {
+          const c = await hre.ethers.getContractAt(_name, d.address);
+          this.resetWalletProvider();
+          this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
+          return c as T;
+        } catch (e) {
+          this.resetWalletProvider();
+          throw e;
+        }
       }
     }
 
@@ -133,10 +152,15 @@ export class DeployHelper {
     this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
     try {
       this.applyWalletProvider();
-      const c = await hre.ethers.getContractAt(_name, _address);
-      this.resetWalletProvider();
-      this.log(chalk.blue(`  - loaded @ [${chalk.white(_address)}]`));
-      return c as T;
+      try {
+        const c = await hre.ethers.getContractAt(_name, _address);
+        this.resetWalletProvider();
+        this.log(chalk.blue(`  - loaded @ [${chalk.white(_address)}]`));
+        return c as T;
+      } catch (e) {
+        this.resetWalletProvider();
+        throw e;
+      }
     } catch {}
 
     // could not load
@@ -171,24 +195,37 @@ export class DeployHelper {
         //load deployed
         this.log(chalk.blue(`- loading [${chalk.white(_log ?? _name)}]`));
         this.applyWalletProvider();
-        const c = await hre.ethers.getContractAt(_name, d.address);
-        this.resetWalletProvider();
-        this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
-        return c as T;
+        try {
+          const c = await hre.ethers.getContractAt(_name, d.address);
+          this.resetWalletProvider();
+          this.log(chalk.blue(`  - loaded @ [${chalk.white(d.address)}]`));
+          return c as T;
+        } catch (e) {
+          this.resetWalletProvider();
+          throw e;
+        }
       }
     }
 
     //deploy
-    this.log(chalk.blue(`- deploying [${chalk.white(_log ?? _name)}]`));
-    const tx = await _callback();
-    this.setDeploymentHash(_id, tx.deploymentTransaction()?.hash!);
+    try {
+      //deploy
+      this.log(chalk.blue(`- deploying [${chalk.white(_log ?? _name)}]`));
+      this.applyWalletProvider();
+      const tx = await _callback();
+      this.resetWalletProvider();
+      this.setDeploymentHash(_id, tx.deploymentTransaction()?.hash!);
 
-    //wait until deployed
-    const c = await tx.waitForDeployment();
-    this.setDeploymentAddress(_id, _log ?? _name, await resolveAddress(c.target));
-    this.log(chalk.blue(`  - deployed @ [${chalk.white(await resolveAddress(c.target))}]`));
+      //wait until deployed
+      const c = await tx.waitForDeployment();
+      this.setDeploymentAddress(_id, _log ?? _name, await resolveAddress(c.target));
+      this.log(chalk.blue(`  - deployed @ [${chalk.white(await resolveAddress(c.target))}]`));
 
-    return c;
+      return c;
+    } catch (e) {
+      this.resetWalletProvider();
+      throw e;
+    }
   };
 
   public call = async <T>(_id: string, _log: string, _callback: () => Promise<T>): Promise<T> => {

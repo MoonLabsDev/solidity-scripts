@@ -3,7 +3,8 @@
 If you want to use Ledger as HardwareWallet in Hardhat, you need to install:
 
 ```
-"@ethersproject/hardware-wallets": "^5.8.0"
+"@ethers-ext/signer-ledger": "^6.0.0-beta.1",
+"@ledgerhq/hw-transport-node-hid": "^6.29.11"
 ```
 
 # Usage
@@ -69,8 +70,13 @@ task('myTask', 'Test Task')
   .setAction(async (taskArgs: any) => {
     // deploy helper
     const { DeployHelper } = require('@moonlabs/solidity-scripts/deployHelpers');
-    const deploy = new DeployHelper(process.env.DEPLOYHELPER_USE_LEDGER === 'true' ? 'ledger' : undefined);
-    deploy.silent = false; // set to true, to prevent log output (for example for automated tests)
+    const deploy = new DeployHelper({
+      walletProvider: process.env.DEPLOYHELPER_USE_LEDGER === 'true' ? 'ledger' : undefined,
+      hardwareWalletAccountIndex: process.env.DEPLOYHELPER_ACCOUNT_INDEX
+        ? parseInt(process.env.DEPLOYHELPER_ACCOUNT_INDEX)
+        : undefined,
+      silent: false // set to true, to prevent log output (for example for automated tests)
+    });
     await deploy.init();
   });
 ```

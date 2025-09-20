@@ -4,41 +4,46 @@ import { extendEnvironment } from 'hardhat/config';
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
 
-import { getLedgerSigner } from '../src/HardwareWallets/ledger';
+import { generateLedgerDerivationPath, getLedgerSigner } from '../src/HardwareWallets/ledger';
 
 declare module 'hardhat/types/runtime' {
   interface HardhatRuntimeEnvironment {
-    getLedgerSigner: (path?: string) => Promise<HardhatEthersSigner>;
+    getLedgerSigner: () => Promise<HardhatEthersSigner>;
     // flip this to control behavior per run
     useLedger: boolean;
+    useHardwareWalletAccountIndex: number;
 
+    // dont touch this
     useLedger_initizialized: boolean;
   }
 }
 
-function makeLedgerSigner(hre: HardhatRuntimeEnvironment, path?: string) {
-  return getLedgerSigner(hre.ethers.provider, path);
-}
+const makeLedgerSigner = async (hre: HardhatRuntimeEnvironment, index: number) => {
+  return getLedgerSigner(hre.ethers.provider, generateLedgerDerivationPath(index));
+};
 
 extendEnvironment((hre: HardhatRuntimeEnvironment) => {
   // enable/disable globally via env var or manually
   hre.useLedger = process.env.USE_LEDGER === '1';
+  hre.useHardwareWalletAccountIndex = process.env.HARDHAT_HARDWARE_WALLET_ACCOUNT_INDEX
+    ? parseInt(process.env.HARDHAT_HARDWARE_WALLET_ACCOUNT_INDEX)
+    : 0;
 
   // check init
   hre.useLedger_initizialized = false;
 
-  hre.getLedgerSigner = async (path?: string) => {
+  hre.getLedgerSigner = async () => {
     try {
       if (!hre.useLedger_initizialized) console.log(chalk.blue('Try to connect to [Ledger]'));
 
       // create signer
-      const signer = makeLedgerSigner(hre, path) as any as HardhatEthersSigner;
+      const signer = (await makeLedgerSigner(hre, hre.useHardwareWalletAccountIndex)) as any as HardhatEthersSigner;
 
       // try to get address
-      await signer.getAddress();
+      const addr = await signer.getAddress();
 
       if (!hre.useLedger_initizialized) {
-        console.log(chalk.green('Connected to [Ledger]'));
+        console.log(chalk.green(`Connected to [Ledger] with address [${addr}]`));
         hre.useLedger_initizialized = true;
       }
 
@@ -64,13 +69,42 @@ extendEnvironment((hre: HardhatRuntimeEnvironment) => {
   };
 
   // --- Patch ethers.getContractFactory to auto-connect to Ledger when enabled ---
-  const origGetCF = hre.ethers.getContractFactory.bind(hre.ethers);
+  type GetCF = typeof hre.ethers.getContractFactory;
+  const origGetCF = hre.ethers.getContractFactory.bind(hre.ethers) as GetCF;
   hre.ethers.getContractFactory = (async (...args: any[]) => {
-    const cf = await (origGetCF as any)(...args);
-    if (!hre.useLedger) return cf;
+    if (!hre.useLedger) return await (origGetCF as any)(...args);
+
     const ledger = await hre.getLedgerSigner();
+
+    // Overloads:
+    if (args.length === 1) {
+      // 1) (name)
+      return await origGetCF(args[0] as string, ledger);
+    } else if (args.length === 2) {
+      const [a, b] = args as [any, any];
+      if (b && typeof b === 'object' && 'provider' in b && 'getAddress' in b) {
+        // 2) (name, signer) so "opt-out"
+        return await origGetCF(a, b);
+      } else {
+        // 3) (abi, bytecode), so call with signer
+        return await origGetCF(a, b, ledger);
+      }
+    } else if (args.length >= 3) {
+      // 4) (abi, bytecode, signer)
+      const [a, b, c, ...rest] = args as [any, any, any, ...any[]];
+      if (c && typeof c === 'object' && 'provider' in c && 'getAddress' in c) {
+        // signer alread provided
+        return (origGetCF as any)(a as any, b as any, c as any, ...rest);
+      } else {
+        // call with signer
+        return (origGetCF as any)(a as any, b as any, ledger, ...rest);
+      }
+    }
+
+    // CF
+    const cf = await (origGetCF as any)(...args);
     return cf.connect(ledger);
-  }) as typeof hre.ethers.getContractFactory;
+  }) as GetCF;
 
   // (Optional) Patch getContractAt as well:
   const origGetCA = hre.ethers.getContractAt.bind(hre.ethers);

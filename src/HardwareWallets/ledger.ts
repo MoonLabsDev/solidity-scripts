@@ -1,5 +1,7 @@
-import { LedgerSigner } from '@ethersproject/hardware-wallets';
 import { Provider } from 'ethers';
+
+import { LedgerSigner } from '@ethers-ext/signer-ledger';
+import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 
 export const enum DerivationPathPurpose {
   Bitcoin = '44',
@@ -37,5 +39,5 @@ export const generateLedgerDerivationPath = (index: number) => {
 };
 
 export const getLedgerSigner = (provider: Provider, path?: string) => {
-  return new LedgerSigner(provider as any, 'hid', path ?? generateLedgerDerivationPath(0));
+  return new LedgerSigner(TransportNodeHid, provider, path ?? generateLedgerDerivationPath(0));
 };

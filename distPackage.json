@@ -1,6 +1,6 @@
 {
   "name": "@moonlabs/solidity-scripts",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "A collection of useful scripts for solidity, hardhat, subgraph",
   "author": "Moon Labs",
   "license": "UNLICENSED",
@@ -22,6 +22,7 @@
   "peerDependencies": {
     "ethers": "^6.7.1",
     "hardhat": "^2.22.3",
-    "@ethersproject/hardware-wallets": "^5.8.0"
+    "@ethers-ext/signer-ledger": "^6.0.0-beta.1",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.11"
   }
 }
