@@ -9,17 +9,20 @@ export interface ContractDeploymentInfo {
   id: string;
   txHash: string;
   address?: string;
+  alternativeInfoFileID?: string;
 }
 
 export interface ContractCallInfo {
   id: string;
   result: any;
+  alternativeInfoFileID?: string;
 }
 
 export interface ContractSendInfo {
   id: string;
   txHash: string;
   success: boolean;
+  alternativeInfoFileID?: string;
 }
 
 export interface ContractDeploymentState {
@@ -28,15 +31,15 @@ export interface ContractDeploymentState {
   sends: ContractSendInfo[];
 }
 
-type SerializedType = boolean | number | string | SerializedStruct | SerializedTypeInfo;
+type SerializedType = boolean | number | string | SerializedStruct | SerializedTypeInfo | SerializedType[];
 
 interface SerializedStruct {
   [key: string]: SerializedType;
 }
 
 interface SerializedTypeInfo {
-  value: string | SerializedStruct;
-  $type: 'BigInt' | 'struct';
+  value: string | SerializedStruct | SerializedType[];
+  $type: 'BigInt' | 'struct' | 'array';
 }
 
 export enum DeployHelperWalletProvider {
@@ -59,18 +62,20 @@ export class DeployHelper {
   private tab: string;
   public silent: boolean;
   public throwOnRevert: boolean;
+  public forceLoadLocal: boolean = false;
   private walletProvider: DeployHelperWalletProvider;
   private walletProviderBefore: boolean = false;
   private hardwareWalletAccountIndex: number;
   private hardwareWalletAccountIndexBefore: number;
+  private alternativeInfoFileID?: string;
 
-  public constructor(_options: DeployHelperOptions) {
+  public constructor(_options?: DeployHelperOptions) {
     this.level = 0;
     this.tab = '  ';
-    this.silent = _options.silent ?? false;
-    this.throwOnRevert = _options.throwOnRevert ?? true;
-    this.walletProvider = _options.walletProvider ?? DeployHelperWalletProvider.Seed;
-    this.hardwareWalletAccountIndex = _options.hardwareWalletAccountIndex ?? 0;
+    this.silent = _options?.silent ?? false;
+    this.throwOnRevert = _options?.throwOnRevert ?? true;
+    this.walletProvider = _options?.walletProvider ?? DeployHelperWalletProvider.Seed;
+    this.hardwareWalletAccountIndex = _options?.hardwareWalletAccountIndex ?? 0;
     this.hardwareWalletAccountIndexBefore = this.hardwareWalletAccountIndex;
     this.chainId = hre.network.config.chainId as number;
     this.deployedLog = [];
@@ -87,6 +92,17 @@ export class DeployHelper {
 
     //load
     await this.loadDeploymentInfo();
+  };
+
+  public useAlternativeInfoFileID = (_alternativeInfoFileID?: string) => {
+    // check
+    if (this.alternativeInfoFileID === _alternativeInfoFileID) return;
+    if (_alternativeInfoFileID === 'info' || _alternativeInfoFileID === 'deployed')
+      throw 'Invalid alternative info file ID';
+
+    // set
+    this.alternativeInfoFileID = _alternativeInfoFileID;
+    if (this.alternativeInfoFileID !== undefined) this.loadDeploymentInfo();
   };
 
   private applyWalletProvider = () => {
@@ -143,29 +159,24 @@ export class DeployHelper {
     }
 
     // could not load
-    this.log(chalk.red(`  - No deployment found`));
+    this.error(`  - No deployment found`);
     throw 'No deployment found';
   };
 
   public loadWithAddress = async <T>(_address: string, _name: string): Promise<T> => {
     //load deployed
     this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
+    this.applyWalletProvider();
     try {
-      this.applyWalletProvider();
-      try {
-        const c = await hre.ethers.getContractAt(_name, _address);
-        this.resetWalletProvider();
-        this.log(chalk.blue(`  - loaded @ [${chalk.white(_address)}]`));
-        return c as T;
-      } catch (e) {
-        this.resetWalletProvider();
-        throw e;
-      }
-    } catch {}
-
-    // could not load
-    this.log(chalk.red(`  - Could not load contract`));
-    throw 'Could not load contract';
+      const c = await hre.ethers.getContractAt(_name, _address);
+      this.resetWalletProvider();
+      this.log(chalk.blue(`  - loaded @ [${chalk.white(_address)}]`));
+      return c as T;
+    } catch (e) {
+      this.error(`  - Could not load contract`);
+      this.resetWalletProvider();
+      throw e;
+    }
   };
 
   public deploy = async <T>(
@@ -263,7 +274,7 @@ export class DeployHelper {
             }
             throw 'Tx reverted';
           } catch {
-            this.log(chalk.red(`  - reverted`));
+            this.error(`  - reverted`);
             // try again
             retry = true;
           }
@@ -281,7 +292,7 @@ export class DeployHelper {
       const r = await tx!.wait();
       if (r?.status !== 1) throw 'Tx reverted';
     } catch {
-      this.log(chalk.red(`  - reverted`));
+      this.error(`  - reverted`);
       if (this.throwOnRevert) throw 'Tx reverted';
       else return false;
     }
@@ -304,6 +315,7 @@ export class DeployHelper {
       i = {
         id: _id,
         txHash: _txHash,
+        alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.deployments.push(i);
     }
@@ -344,6 +356,7 @@ export class DeployHelper {
       i = {
         id: _id,
         result: this.serializeCallResult(_result),
+        alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.calls.push(i);
     }
@@ -366,6 +379,7 @@ export class DeployHelper {
         id: _id,
         txHash: _txHash,
         success: false,
+        alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.sends.push(i);
     }
@@ -398,6 +412,14 @@ export class DeployHelper {
 
     //log
     console.log(`${tabs}${_message}`);
+  };
+
+  public warn = (_message: string) => {
+    this.log(chalk.yellow(_message));
+  };
+
+  public error = (_message: string) => {
+    this.log(chalk.red(_message));
   };
 
   public openCategory = (_title: string, _levels: number = 0) => {
@@ -433,6 +455,11 @@ export class DeployHelper {
         value: _data.toString(10),
         $type: 'BigInt',
       };
+    } else if (Array.isArray(_data)) {
+      return {
+        value: _data.map(i => this.serializeCallResult(i)) as SerializedType[],
+        $type: 'array',
+      };
     } else {
       // struct
       const keys = Object.keys(_data);
@@ -452,6 +479,9 @@ export class DeployHelper {
       switch (ct.$type) {
         case 'BigInt':
           return BigInt(ct.value as string);
+
+        case 'array':
+          return (ct.value as SerializedType[]).map(i => this.deserializeCallResult(i));
 
         case 'struct': {
           const obj: SerializedStruct = {};
@@ -484,23 +514,66 @@ export class DeployHelper {
     };
   };
 
-  public loadDeploymentInfo = () => {
-    this.resetDeploymentInfo();
-    if (this.chainId === 31337) return; //don't load on hardhat node
+  public loadDeploymentInfo = (_merge: boolean = false) => {
+    if (!_merge) {
+      this.resetDeploymentInfo();
+      if (this.chainId === 31337 && !this.forceLoadLocal) return; //don't load on hardhat node
+    }
 
     // info
     try {
       const data = fs.readFileSync(this.generateInfoFileName());
       const j = JSON.parse(data.toString());
       if (j !== undefined && j.calls !== undefined && j.sends !== undefined && j.deployments !== undefined) {
-        this.state = j;
+        // set state
+        if (_merge) {
+          // merge & add alternativeInfoFileID to all items
+          this.state.deployments = [
+            ...this.state.deployments.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
+            ...j.deployments,
+          ];
+          this.state.calls = [
+            ...this.state.calls.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
+            ...j.calls,
+          ];
+          this.state.sends = [
+            ...this.state.sends.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
+            ...j.sends,
+          ];
+        } else {
+          this.state = j;
+        }
       }
     } catch {}
   };
 
   public saveDeploymentInfo = () => {
     fs.mkdirSync(this.generateSaveFilePath(), { recursive: true });
-    fs.writeFileSync(this.generateInfoFileName(), JSON.stringify(this.state, null, 2));
+
+    // write info file but only for current infoFile & remove alternativeInfoFileID
+    fs.writeFileSync(
+      this.generateInfoFileName(),
+      JSON.stringify(
+        {
+          deployments:
+            this.state.deployments
+              ?.filter(i => i.alternativeInfoFileID === this.alternativeInfoFileID)
+              .map(i => ({ ...i, alternativeInfoFileID: undefined })) ?? [],
+          calls:
+            this.state.calls
+              ?.filter(i => i.alternativeInfoFileID === this.alternativeInfoFileID)
+              .map(i => ({ ...i, alternativeInfoFileID: undefined })) ?? [],
+          sends:
+            this.state.sends
+              ?.filter(i => i.alternativeInfoFileID === this.alternativeInfoFileID)
+              .map(i => ({ ...i, alternativeInfoFileID: undefined })) ?? [],
+        },
+        null,
+        2
+      )
+    );
+
+    // override deploy log
     fs.writeFileSync(this.generateDeployFileName(), JSON.stringify(this.deployedLog, null, 2));
   };
 
@@ -509,7 +582,7 @@ export class DeployHelper {
   };
 
   private generateInfoFileName = () => {
-    return `${this.generateSaveFilePath()}/info.json`;
+    return `${this.generateSaveFilePath()}/${this.alternativeInfoFileID ?? 'info'}.json`;
   };
 
   private generateDeployFileName = () => {

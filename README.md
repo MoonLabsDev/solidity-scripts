@@ -55,7 +55,7 @@ and in `package.json` add a script:
 ### General
 
 The `<UNIQUE ID>` fields are used to check progress, continue, and skip already executed code.
-Data will be stored per chain in `/deploy/deployments/<CHAIN ID>`
+State will be stored per chain in `/deploy/deployments/<CHAIN ID>/info.json`
 
 ### Hardhat Tasks
 
@@ -121,6 +121,13 @@ await deploy.call(
 );
 ```
 
+### Additional State files
+
+By default you only have the `info.json` state file. It will always get loaded. You can load other state files that are merged, by using `deploy.useAlternativeInfoFileID(<STATE FILE ID>);`
+When called without parameter, it reverts back to `info.json` otherwise all new state changes will be written to `/deploy/deployments/<CHAIN ID>/<STATE FILE ID>.json`.
+This is very useful for maintainance scripts. First you load the deployment data from `info.json`, then switch to another state file and execute your script logic. To reset the state, just delete the state file.
+
 ### Logging
 
 For Categories you have `deploy.openCategory('<NAME>');` and `deploy.closeCategory();`
+Besides that you can call `deploy.log`, `deploy.warn`, `deploy.error` which all handle tab intend from categories
