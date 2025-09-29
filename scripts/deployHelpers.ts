@@ -117,6 +117,14 @@ export class DeployHelper {
     }
   };
 
+  public getDeployerAddress = async () => {
+    this.applyWalletProvider();
+    const addr = await (await hre.ethers.getSigners())[0].getAddress();
+    this.resetWalletProvider();
+
+    return addr;
+  };
+
   private resetWalletProvider = () => {
     const hreAny = hre as any;
     switch (this.walletProvider) {
