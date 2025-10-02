@@ -87,10 +87,10 @@ export class DeployHelper {
   }
 
   public init = async () => {
-    //check
+    // check
     if (this.chainId === undefined) throw 'Invalid Network';
 
-    //load
+    // load
     await this.loadDeploymentInfo();
   };
 
@@ -136,10 +136,10 @@ export class DeployHelper {
   };
 
   public load = async <T>(_id: string, _name: string): Promise<T> => {
-    //check if id exist
+    // check if id exist
     let d = this.findDeployment(_id);
     if (d !== null) {
-      //check for address / mined tx
+      // check for address / mined tx
       if (d.address === undefined) {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
         if (tx !== null) {
@@ -149,9 +149,9 @@ export class DeployHelper {
         }
       }
 
-      //check if it was deployed
+      // check if it was deployed
       if (d.address !== undefined) {
-        //load deployed
+        // load deployed
         this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
         this.applyWalletProvider();
         try {
@@ -172,7 +172,7 @@ export class DeployHelper {
   };
 
   public loadWithAddress = async <T>(_address: string, _name: string): Promise<T> => {
-    //load deployed
+    // load deployed
     this.log(chalk.blue(`- loading [${chalk.white(_name)}]`));
     this.applyWalletProvider();
     try {
@@ -188,7 +188,7 @@ export class DeployHelper {
   };
 
   public deploy = async <T>(
-    _id: string,
+    _id: string | undefined,
     _name: string,
     _callback: () => T &
       BaseContract & {
@@ -196,22 +196,22 @@ export class DeployHelper {
       },
     _log?: string
   ): Promise<T> => {
-    //check if id exist
+    // check if id exist
     let d = this.findDeployment(_id);
     if (d !== null) {
-      //check for address / mined tx
+      // check for address / mined tx
       if (d.address === undefined) {
         const tx = await hre.ethers.provider.getTransaction(d.txHash);
         if (tx !== null) {
           const r = await tx!.wait();
-          this.setDeploymentAddress(_id, _log ?? _name, r!.contractAddress);
+          this.setDeploymentAddress(_id!, _log ?? _name, r!.contractAddress);
           d = this.findDeployment(_id)!;
         }
       }
 
-      //check if it was deployed
+      // check if it was deployed
       if (d.address !== undefined) {
-        //load deployed
+        // load deployed
         this.log(chalk.blue(`- loading [${chalk.white(_log ?? _name)}]`));
         this.applyWalletProvider();
         try {
@@ -226,18 +226,19 @@ export class DeployHelper {
       }
     }
 
-    //deploy
+    // deploy
+    const hasId = (_id ?? '') !== '';
     try {
-      //deploy
-      this.log(chalk.blue(`- deploying [${chalk.white(_log ?? _name)}]`));
+      // deploy
+      this.log(chalk.blue(`- deploying [${chalk.white(_log ?? _name)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`));
       this.applyWalletProvider();
       const tx = await _callback();
       this.resetWalletProvider();
-      this.setDeploymentHash(_id, tx.deploymentTransaction()?.hash!);
+      if (hasId) this.setDeploymentHash(_id!, tx.deploymentTransaction()?.hash!);
 
-      //wait until deployed
+      // wait until deployed
       const c = await tx.waitForDeployment();
-      this.setDeploymentAddress(_id, _log ?? _name, await resolveAddress(c.target));
+      if (hasId) this.setDeploymentAddress(_id!, _log ?? _name, await resolveAddress(c.target));
       this.log(chalk.blue(`  - deployed @ [${chalk.white(await resolveAddress(c.target))}]`));
 
       return c;
@@ -247,37 +248,42 @@ export class DeployHelper {
     }
   };
 
-  public call = async <T>(_id: string, _log: string, _callback: () => Promise<T>): Promise<T> => {
-    //check if id exist
+  public call = async <T>(_id: string | undefined, _log: string, _callback: () => Promise<T>): Promise<T> => {
+    // check if id exist
     let c = this.findCall(_id);
     if (c !== null) {
-      //return previous result
+      // return previous result
       this.log(chalk.blue(`- remembering [${chalk.white(_log)}]`));
       return this.deserializeCallResult(c.result);
     }
 
-    //call
-    this.log(chalk.blue(`- calling [${chalk.white(_log)}]`));
+    // call
+    const hasId = (_id ?? '') !== '';
+    this.log(chalk.blue(`- calling [${chalk.white(_log)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`));
     const r = await _callback();
-    this.setCallResult(_id, r);
+    if (hasId) this.setCallResult(_id!, r);
 
     return r;
   };
 
-  public send = async (_id: string, _log: string, _callback: () => Promise<TransactionResponse>): Promise<boolean> => {
-    //check if id exist
+  public send = async (
+    _id: string | undefined,
+    _log: string,
+    _callback: () => Promise<TransactionResponse>
+  ): Promise<boolean> => {
+    // check if id exist
     let s = this.findSend(_id);
     let retry = false;
     if (s !== null) {
       this.log(chalk.blue(`- already executed [${chalk.white(_log)}]`));
-      //check for mined tx
+      // check for mined tx
       if (!s.success) {
         const tx = await hre.ethers.provider.getTransaction(s.txHash);
         if (tx !== null) {
           try {
             const r = await tx!.wait();
             if (r?.status === 1) {
-              this.setSendSuccess(_id);
+              this.setSendSuccess(_id!);
               return true;
             }
             throw 'Tx reverted';
@@ -290,12 +296,15 @@ export class DeployHelper {
       } else return true;
     }
 
-    //send
-    this.log(chalk.blue(`- send ${retry ? '(retry) ' : ''}[${chalk.white(_log)}]`));
+    // send
+    const hasId = (_id ?? '') !== '';
+    this.log(
+      chalk.blue(`- send ${retry ? '(retry) ' : ''}[${chalk.white(_log)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`)
+    );
     const tx = await _callback();
-    this.setSendHash(_id, tx.hash);
+    if (hasId) this.setSendHash(_id!, tx.hash);
 
-    //wait until executed
+    // wait until executed
     try {
       const r = await tx!.wait();
       if (r?.status !== 1) throw 'Tx reverted';
@@ -305,7 +314,7 @@ export class DeployHelper {
       else return false;
     }
     this.log(chalk.blue(`  - executed`));
-    this.setSendSuccess(_id);
+    if (hasId) this.setSendSuccess(_id!);
     return true;
   };
 
@@ -313,7 +322,8 @@ export class DeployHelper {
   // Deployment Info
   /////////////////
 
-  private findDeployment = (_id: string): ContractDeploymentInfo | null => {
+  private findDeployment = (_id: string | undefined): ContractDeploymentInfo | null => {
+    if (_id === undefined || _id === '') return null;
     return this.state.deployments.find(i => i.id === _id) ?? null;
   };
 
@@ -354,7 +364,8 @@ export class DeployHelper {
   // Call Info
   /////////////////
 
-  private findCall = (_id: string): ContractCallInfo | null => {
+  private findCall = (_id: string | undefined): ContractCallInfo | null => {
+    if (_id === undefined || _id === '') return null;
     return this.state.calls.find(i => i.id === _id) ?? null;
   };
 
@@ -376,7 +387,8 @@ export class DeployHelper {
   // Send Info
   /////////////////
 
-  private findSend = (_id: string): ContractSendInfo | null => {
+  private findSend = (_id: string | undefined): ContractSendInfo | null => {
+    if (_id === undefined || _id === '') return null;
     return this.state.sends.find(i => i.id === _id) ?? null;
   };
 
@@ -414,11 +426,11 @@ export class DeployHelper {
   public log = (_message: string) => {
     if (this.silent) return;
 
-    //tabs
+    // tabs
     let tabs = '';
     for (let n = 0; n < this.level; n++) tabs += this.tab;
 
-    //log
+    // log
     console.log(`${tabs}${_message}`);
   };
 
@@ -431,7 +443,7 @@ export class DeployHelper {
   };
 
   public openCategory = (_title: string, _levels: number = 0) => {
-    //levels
+    // levels
     while (_levels < 0) {
       _levels += 1;
       this.decreaseTabLevel();
@@ -441,7 +453,7 @@ export class DeployHelper {
       this.increaseTabLevel();
     }
 
-    //log
+    // log
     this.log(chalk.yellow(`- ${_title}`));
     this.increaseTabLevel();
   };
@@ -513,7 +525,7 @@ export class DeployHelper {
   /////////////////
 
   public resetDeploymentInfo = () => {
-    //reset state
+    // reset state
     this.deployedLog = [];
     this.state = {
       deployments: [],
@@ -525,7 +537,7 @@ export class DeployHelper {
   public loadDeploymentInfo = (_merge: boolean = false) => {
     if (!_merge) {
       this.resetDeploymentInfo();
-      if (this.chainId === 31337 && !this.forceLoadLocal) return; //don't load on hardhat node
+      if (this.chainId === 31337 && !this.forceLoadLocal) return; // don't load on hardhat node
     }
 
     // info
