@@ -14,7 +14,7 @@ declare module 'hardhat/types/runtime' {
     useHardwareWalletAccountIndex: number;
 
     // dont touch this
-    useLedger_initizialized: boolean;
+    useLedger_signer: HardhatEthersSigner | null;
   }
 }
 
@@ -30,24 +30,24 @@ extendEnvironment((hre: HardhatRuntimeEnvironment) => {
     : 0;
 
   // check init
-  hre.useLedger_initizialized = false;
+  hre.useLedger_signer = null;
 
   hre.getLedgerSigner = async () => {
     try {
-      if (!hre.useLedger_initizialized) console.log(chalk.blue('Try to connect to [Ledger]'));
+      if (!!hre.useLedger_signer) return hre.useLedger_signer;
 
       // create signer
-      const signer = (await makeLedgerSigner(hre, hre.useHardwareWalletAccountIndex)) as any as HardhatEthersSigner;
+      console.log(chalk.blue('Try to connect to [Ledger]'));
+      hre.useLedger_signer = (await makeLedgerSigner(
+        hre,
+        hre.useHardwareWalletAccountIndex
+      )) as any as HardhatEthersSigner;
 
       // try to get address
-      const addr = await signer.getAddress();
+      const addr = await hre.useLedger_signer.getAddress();
+      console.log(chalk.green(`Connected to [Ledger] with address [${addr}]`));
 
-      if (!hre.useLedger_initizialized) {
-        console.log(chalk.green(`Connected to [Ledger] with address [${addr}]`));
-        hre.useLedger_initizialized = true;
-      }
-
-      return signer;
+      return hre.useLedger_signer;
     } catch (error) {
       console.error('Error getting address from Ledger', error);
       throw error;
@@ -94,10 +94,10 @@ extendEnvironment((hre: HardhatRuntimeEnvironment) => {
       const [a, b, c, ...rest] = args as [any, any, any, ...any[]];
       if (c && typeof c === 'object' && 'provider' in c && 'getAddress' in c) {
         // signer alread provided
-        return (origGetCF as any)(a as any, b as any, c as any, ...rest);
+        return await (origGetCF as any)(a as any, b as any, c as any, ...rest);
       } else {
         // call with signer
-        return (origGetCF as any)(a as any, b as any, ledger, ...rest);
+        return await (origGetCF as any)(a as any, b as any, ledger, ...rest);
       }
     }
 

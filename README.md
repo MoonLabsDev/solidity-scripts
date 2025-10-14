@@ -21,6 +21,16 @@ to then use Ledger Hardware wallet, just call the following code (before ensure,
 
 ```
 hre.useLedger = true;
+hre.useHardwareWalletAccountIndex = 0; // select account index
+```
+
+or use DeployHelper:
+
+```
+const deploy = new DeployHelper({
+  walletProvider: 'ledger',
+  hardwareWalletAccountIndex: 0, //select account index
+});
 ```
 
 ## flatten
