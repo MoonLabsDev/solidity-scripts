@@ -9,6 +9,102 @@ If you want to use Ledger as HardwareWallet in Hardhat, you need to install:
 
 # Usage
 
+## multicall
+
+this offers a lightweight wrapper arround ethers and MulticallV3. You can either use a `rawCall`, `call` or `callWithReference`.
+
+### callWithReference
+
+The result struct is defined like this (topic is optional, otherwise all results will be always listed with index):
+
+```
+interface ICallWithReferenceResult {
+  [reference: string]: {
+    [topic: string]: any;
+    [resultIndex: number]: any;
+  };
+}
+```
+
+```
+import { Multicall } from '@moonlabs/solidity-scripts/multicall';
+import { Contract, JsonRpcProvider } from 'ethers';
+
+const test = async (provider: JsonRpcProvider) => {
+  // init contract
+  const myERC20_ETH = new Contract(<CONTRACT ADDRESS>, <CONTRACT ABI>);
+  const myERC20_USDC = new Contract(<CONTRACT ADDRESS 2>, <CONTRACT ABI>);
+
+  // init multicall v3
+  const multicall = new Multicall(provider, <MULTICALL V3 ADDRESS>);
+
+  // example map
+  const myMap: Record<string, Contract> = {
+    ETH: myERC20_ETH,
+    USDC: myERC20_USDC
+  };
+
+  // make reference calls (example with ERC20)
+  const refCalls = Object.entries(myMap).map((key, contract) =>
+    Multicall.createReference(key, [
+      Multicall.createTopicCall('decimals', contract, 'decimals()', []),
+      Multicall.createTopicCall('symbol', contract, 'symbol()', [])
+      Multicall.createTopicCall('balance', contract, 'balanceOf(address)', [<USER ADDRESS>])
+    ])
+  );
+
+  // multicall
+  const result = await multicall.callWithReference(refCalls, true);
+
+  // read example (result has the references as keys)
+  console.log(`ETH decimals: ${result.ETH.decimals} | userBalance: ${result.ETH.balance}`); // via topic
+  console.log(`USDC decimals: ${result.USDC[0]} | userBalance: ${result.USDC[2]}`); // via index
+}
+```
+
+### batchIterate
+
+A useful helper to ensure a mximum batch size. Useful for larger queries.
+
+```
+import { Multicall } from '@moonlabs/solidity-scripts/multicall';
+import { Contract, JsonRpcProvider } from 'ethers';
+
+const test = async (provider: JsonRpcProvider) => {
+  // init contract
+  const myERC20_ETH = new Contract(<CONTRACT ADDRESS>, <CONTRACT ABI>);
+  const myERC20_USDC = new Contract(<CONTRACT ADDRESS 2>, <CONTRACT ABI>);
+
+  // init multicall v3
+  const multicall = new Multicall(provider, <MULTICALL V3 ADDRESS>);
+
+  // example map (assume this has hundreds of entries)
+  const myMap: Record<string, Contract> = {
+    ETH: myERC20_ETH,
+    USDC: myERC20_USDC
+  };
+  const myKeys = Object.keys(myMap);
+
+  // process
+  await Multicall.batchIterate(
+    multicall,
+    mapEntries.lengh,
+    100, // batch size
+    myKeys, // references
+    true,
+    async (r, i) => r[myKeys[i]].calls = [
+      Multicall.createTopicCall('symbol', myMap[myKeys[i]], 'symbol()', [])
+      Multicall.createTopicCall('balance', myMap[myKeys[i]], 'balanceOf(address)', [<USER ADDRESS>])
+    ], // function to make the calls
+    async (r, i) => {
+      const val = r[myKeys[i]];
+      console.log(`${val.symbol} balance = ${val.balance}`)
+    }, // function to execute for each chunk
+    async (start, end) => console.log(`loaded ${end - start} chunks`)
+  );
+}
+```
+
 ## hardhatLedger
 
 in your hardhat.config.ts, just add this line:

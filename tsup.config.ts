@@ -8,6 +8,7 @@ export default defineConfig({
     'scripts/subgraphHelpers.ts',
     'scripts/testHelpers.ts',
     'scripts/hardhatLedger.ts',
+    'scripts/multicall.ts',
   ],
   format: ['cjs'], // Build for commonJS and ESmodules
   dts: true, // Generate declaration file (.d.ts)

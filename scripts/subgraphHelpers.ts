@@ -103,12 +103,20 @@ const run = (_args: SubgraphArgs, _silent: boolean) => {
 };
 
 export class SubgraphHelper {
+  /////////////////
+  // Attributes
+  /////////////////
+
   private contractsFolder: string | string[];
   private subgraphTemplate: string;
   private subgraphTarget: string;
   private level: number;
   private tab: string;
   public silent: boolean;
+
+  /////////////////
+  // Create
+  /////////////////
 
   public constructor(_contractsFolder: string | string[], _subgraphTemplate: string, _subgraphTarget: string) {
     this.contractsFolder = Array.isArray(_contractsFolder) ? _contractsFolder : [_contractsFolder];
@@ -118,6 +126,10 @@ export class SubgraphHelper {
     this.tab = '  ';
     this.silent = false;
   }
+
+  /////////////////
+  // Functions
+  /////////////////
 
   public run(_chainId: number, _chainName: string, _startBlock: number = 0) {
     this.log(chalk.yellow(`- Write deployment info to subgraph template`));
