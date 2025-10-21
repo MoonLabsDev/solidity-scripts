@@ -98,7 +98,7 @@ export class DeployHelper {
     // check
     if (this.alternativeInfoFileID === _alternativeInfoFileID) return;
     if (_alternativeInfoFileID === 'info' || _alternativeInfoFileID === 'deployed')
-      throw 'Invalid alternative info file ID';
+      throw new Error('Invalid alternative info file ID');
 
     // set
     this.alternativeInfoFileID = _alternativeInfoFileID;
@@ -168,7 +168,7 @@ export class DeployHelper {
 
     // could not load
     this.error(`  - No deployment found`);
-    throw 'No deployment found';
+    throw new Error('No deployment found');
   };
 
   public loadWithAddress = async <T>(_address: string, _name: string): Promise<T> => {
@@ -286,7 +286,7 @@ export class DeployHelper {
               this.setSendSuccess(_id!);
               return true;
             }
-            throw 'Tx reverted';
+            throw new Error('Tx reverted');
           } catch {
             this.error(`  - reverted`);
             // try again
@@ -307,10 +307,10 @@ export class DeployHelper {
     // wait until executed
     try {
       const r = await tx!.wait();
-      if (r?.status !== 1) throw 'Tx reverted';
+      if (r?.status !== 1) throw new Error('Tx reverted');
     } catch {
       this.error(`  - reverted`);
-      if (this.throwOnRevert) throw 'Tx reverted';
+      if (this.throwOnRevert) throw new Error('Tx reverted');
       else return false;
     }
     this.log(chalk.blue(`  - executed`));

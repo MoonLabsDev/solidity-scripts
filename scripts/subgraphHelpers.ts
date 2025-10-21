@@ -142,7 +142,7 @@ export class SubgraphHelper {
       subgraphData = fs.readFileSync(this.subgraphTemplate).toString();
     } catch {
       this.log(chalk.red(`  - No subgraph template found`));
-      throw 'No subgraph template found';
+      throw new Error('No subgraph template found');
     }
     this.log(chalk.blue(`  - loaded [${chalk.white('Subgraph Template')}]`));
 
@@ -164,7 +164,7 @@ export class SubgraphHelper {
         };
       } catch {
         this.log(chalk.red(`  - No deployment found [${deploymentFile}]`));
-        throw 'No deployment found';
+        throw new Error('No deployment found');
       }
     }
     this.log(chalk.blue(`  - loaded [${chalk.white('Deployment Info')}]`));
