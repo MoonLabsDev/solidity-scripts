@@ -302,7 +302,7 @@ export class DeployHelper {
       chalk.blue(`- send ${retry ? '(retry) ' : ''}[${chalk.white(_log)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`)
     );
     const tx = await _callback();
-    if (hasId) this.setSendHash(_id!, tx.hash);
+    if (hasId) this.setSendHash(_id!, tx.hash, retry);
 
     // wait until executed
     try {
@@ -392,7 +392,7 @@ export class DeployHelper {
     return this.state.sends.find(i => i.id === _id) ?? null;
   };
 
-  private setSendHash = (_id: string, _txHash: string) => {
+  private setSendHash = (_id: string, _txHash: string, _retry: boolean) => {
     let i = this.findSend(_id);
     if (i === null) {
       i = {
@@ -402,7 +402,7 @@ export class DeployHelper {
         alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.sends.push(i);
-    }
+    } else if (_retry) i.txHash = _txHash; // set new tx hash
     this.saveDeploymentInfo();
     return i;
   };
