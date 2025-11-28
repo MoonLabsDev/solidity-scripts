@@ -531,6 +531,7 @@ export class DeployHelper {
                 obj[n] = this.deserializeCallResult((ct.value as SerializedType[])[n], _functionFragment, c);
                 if (c.name) obj[c.name] = obj[n];
               }
+              return obj;
             } else if (_paramType.baseType === 'array') {
               // array
               return (ct.value as SerializedType[]).map(i =>
