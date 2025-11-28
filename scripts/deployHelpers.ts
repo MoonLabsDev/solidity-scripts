@@ -47,7 +47,6 @@ interface SerializedStruct {
 interface SerializedTypeInfo {
   value: string | SerializedStruct | SerializedType[];
   $type: 'BigInt' | 'struct' | 'array';
-  $keys?: { [name: string]: number };
 }
 
 export enum DeployHelperWalletProvider {
@@ -267,14 +266,14 @@ export class DeployHelper {
     if (c !== null) {
       // return previous result
       this.log(chalk.blue(`- remembering [${chalk.white(_log)}]`));
-      return this.deserializeCallResult(c.result);
+      return this.deserializeCallResult(c.result, _functionFragment);
     }
 
     // call
     const hasId = (_id ?? '') !== '';
     this.log(chalk.blue(`- calling [${chalk.white(_log)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`));
     const r = await _callback();
-    if (hasId) this.setCallResult(_id!, r, _functionFragment);
+    if (hasId) this.setCallResult(_id!, r);
 
     return r;
   };
@@ -382,12 +381,12 @@ export class DeployHelper {
     return this.state.calls.find(i => i.id === _id) ?? null;
   };
 
-  private setCallResult = (_id: string, _result: any, _functionFragment: FunctionFragment | null = null) => {
+  private setCallResult = (_id: string, _result: any) => {
     let i = this.findCall(_id);
     if (i === null) {
       i = {
         id: _id,
-        result: this.serializeCallResult(_result, _functionFragment),
+        result: this.serializeCallResult(_result),
         alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.calls.push(i);
@@ -479,11 +478,7 @@ export class DeployHelper {
   // Serialize / Deserialize Calls
   /////////////////
 
-  private serializeCallResult = (
-    _data: any,
-    _functionFragment: FunctionFragment | null = null,
-    _paramType: ParamType | null = null
-  ): SerializedType => {
+  private serializeCallResult = (_data: any): SerializedType => {
     // value
     if (typeof _data === 'number' || typeof _data === 'string' || typeof _data === 'boolean') {
       return _data;
@@ -494,87 +489,7 @@ export class DeployHelper {
         $type: 'BigInt',
       };
     } else if (Array.isArray(_data)) {
-      // actual array OR struct (analyse function fragment)
-      const struct: SerializedStruct = {};
-      if (!!_functionFragment && _functionFragment.outputs.length > 0) {
-        const os = _functionFragment.outputs;
-        if (!_paramType) {
-          // lowest level
-          if (_functionFragment.outputs.length === 1) {
-            // deeper check...
-            if (os[0].baseType === 'array') {
-              // array
-              return {
-                value: _data.map(i =>
-                  this.serializeCallResult(i, _functionFragment, os[0].arrayChildren)
-                ) as SerializedType[],
-                $type: 'array',
-              };
-            } else if (os[0].baseType === 'tuple') {
-              // tuple
-              const components = os[0].components!;
-              for (let n = 0; n < components.length; n++) {
-                const c = components[n];
-                const value = this.serializeCallResult(_data[n], _functionFragment, c);
-                struct[c.name] = value;
-              }
-              return {
-                value: struct,
-                $keys: Object.fromEntries(components.map((c, i) => [c.name, i])), // map keys to index
-                $type: 'struct',
-              };
-            }
-
-            // not implemented?
-            throw new Error(`Single tuple output not supported yet: ${JSON.stringify(_functionFragment.outputs)}`);
-          } else {
-            // multiple entries, check if names are available
-            const keys: { [name: string]: number } = {};
-            for (let n = 0; n < os.length; n++) {
-              const o = os[n];
-              const value = this.serializeCallResult(_data[n], _functionFragment, o);
-              if (o.name) {
-                struct[o.name] = value;
-                keys[o.name] = n;
-              } else struct[n] = value;
-            }
-            return {
-              value: struct,
-              $keys: keys,
-              $type: 'struct',
-            };
-          }
-        } else {
-          // sub type
-          if (_paramType.baseType === 'array') {
-            // array
-            return {
-              value: _data.map(i =>
-                this.serializeCallResult(i, _functionFragment, _paramType.arrayChildren)
-              ) as SerializedType[],
-              $type: 'array',
-            };
-          } else if (_paramType.baseType === 'tuple') {
-            // tuple
-            const components = _paramType.components!;
-            for (let n = 0; n < components.length; n++) {
-              const c = components[n];
-              const value = this.serializeCallResult(_data[n], _functionFragment, c);
-              struct[c.name] = value;
-            }
-            return {
-              value: struct,
-              $keys: Object.fromEntries(components.map((c, i) => [c.name, i])), // map keys to index
-              $type: 'struct',
-            };
-          }
-
-          // not implemented?
-          throw new Error(`Sub type output not supported yet: ${JSON.stringify(_paramType)}`);
-        }
-      }
-
-      // default to array
+      // default to array (might be an object, but we hande that on deserialization)
       return {
         value: _data.map(i => this.serializeCallResult(i)) as SerializedType[],
         $type: 'array',
@@ -592,7 +507,11 @@ export class DeployHelper {
     }
   };
 
-  private deserializeCallResult = (_data: SerializedType): any => {
+  private deserializeCallResult = (
+    _data: SerializedType,
+    _functionFragment: FunctionFragment | null = null,
+    _paramType: ParamType | null = null
+  ): any => {
     if (typeof _data === 'object') {
       // complex type
       const ct = _data as SerializedTypeInfo;
@@ -600,8 +519,46 @@ export class DeployHelper {
         case 'BigInt':
           return BigInt(ct.value as string);
 
-        case 'array':
+        case 'array': {
+          // this might be a tuple
+          if (!!_paramType) {
+            if (_paramType?.baseType === 'tuple') {
+              // tuple
+              const obj: SerializedStruct = {};
+              const components = _paramType.components!;
+              for (let n = 0; n < components.length; n++) {
+                const c = components[n];
+                obj[n] = this.deserializeCallResult((ct.value as SerializedType[])[n], _functionFragment, c);
+                if (c.name) obj[c.name] = obj[n];
+              }
+            } else if (_paramType.baseType === 'array') {
+              // array
+              return (ct.value as SerializedType[]).map(i =>
+                this.deserializeCallResult(i, _functionFragment, _paramType.arrayChildren)
+              );
+            }
+          } else if (!!_functionFragment && _functionFragment.outputs.length >= 1) {
+            // check if array or low level name output
+            const os = _functionFragment.outputs;
+            if (os.length === 1 && os[0].baseType === 'array')
+              return (ct.value as SerializedType[]).map(i =>
+                this.deserializeCallResult(i, _functionFragment, os[0].arrayChildren)
+              );
+            else {
+              // first deserialze as array and then add names
+              const obj: SerializedStruct = {};
+              for (let n = 0; n < os.length; n++) {
+                const o = os[n];
+                obj[n] = this.deserializeCallResult((ct.value as SerializedType[])[n], _functionFragment, o);
+                if (o.name) obj[o.name] = obj[n];
+              }
+              return obj;
+            }
+          }
+
+          // handle as normal array
           return (ct.value as SerializedType[]).map(i => this.deserializeCallResult(i));
+        }
 
         case 'struct': {
           const obj: SerializedStruct = {};
@@ -612,9 +569,14 @@ export class DeployHelper {
           for (let k of keys) obj[k] = this.deserializeCallResult(struct[k]);
 
           // indexed keys
-          if (!!ct.$keys) {
-            const keyIndexMap = Object.keys(ct.$keys);
-            for (let k of keyIndexMap) obj[ct.$keys[k]] = obj[k];
+          if (_paramType?.baseType === 'tuple') {
+            // param type
+            const components = _paramType.components!;
+            for (let n = 0; n < components.length; n++) obj[n] = obj[components[n].name];
+          } else if (!!_functionFragment && _functionFragment!.outputs.length > 1) {
+            // low level tuple
+            const os = _functionFragment.outputs;
+            for (let n = 0; n < os.length; n++) obj[n] = obj[os[n].name];
           }
 
           return obj;
