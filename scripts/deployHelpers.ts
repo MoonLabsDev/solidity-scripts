@@ -1,7 +1,14 @@
 import chalk from 'chalk';
 import fs from 'fs';
 
-import { TransactionResponse, ContractTransactionResponse, BaseContract, resolveAddress } from 'ethers';
+import {
+  TransactionResponse,
+  ContractTransactionResponse,
+  BaseContract,
+  resolveAddress,
+  FunctionFragment,
+  ParamType,
+} from 'ethers';
 import hre from 'hardhat';
 import '@nomicfoundation/hardhat-ethers';
 
@@ -40,6 +47,7 @@ interface SerializedStruct {
 interface SerializedTypeInfo {
   value: string | SerializedStruct | SerializedType[];
   $type: 'BigInt' | 'struct' | 'array';
+  $keys?: { [name: string]: number };
 }
 
 export enum DeployHelperWalletProvider {
@@ -102,7 +110,7 @@ export class DeployHelper {
 
     // set
     this.alternativeInfoFileID = _alternativeInfoFileID;
-    if (this.alternativeInfoFileID !== undefined) this.loadDeploymentInfo();
+    if (this.alternativeInfoFileID !== undefined) this.loadDeploymentInfo(true);
   };
 
   private applyWalletProvider = () => {
@@ -248,7 +256,12 @@ export class DeployHelper {
     }
   };
 
-  public call = async <T>(_id: string | undefined, _log: string, _callback: () => Promise<T>): Promise<T> => {
+  public call = async <T>(
+    _id: string | undefined,
+    _log: string,
+    _callback: () => Promise<T>,
+    _functionFragment: FunctionFragment | null = null
+  ): Promise<T> => {
     // check if id exist
     let c = this.findCall(_id);
     if (c !== null) {
@@ -261,7 +274,7 @@ export class DeployHelper {
     const hasId = (_id ?? '') !== '';
     this.log(chalk.blue(`- calling [${chalk.white(_log)}]${hasId ? '' : chalk.blue(` [NO CACHE]`)}`));
     const r = await _callback();
-    if (hasId) this.setCallResult(_id!, r);
+    if (hasId) this.setCallResult(_id!, r, _functionFragment);
 
     return r;
   };
@@ -369,12 +382,12 @@ export class DeployHelper {
     return this.state.calls.find(i => i.id === _id) ?? null;
   };
 
-  private setCallResult = (_id: string, _result: any) => {
+  private setCallResult = (_id: string, _result: any, _functionFragment: FunctionFragment | null = null) => {
     let i = this.findCall(_id);
     if (i === null) {
       i = {
         id: _id,
-        result: this.serializeCallResult(_result),
+        result: this.serializeCallResult(_result, _functionFragment),
         alternativeInfoFileID: this.alternativeInfoFileID,
       };
       this.state.calls.push(i);
@@ -466,16 +479,102 @@ export class DeployHelper {
   // Serialize / Deserialize Calls
   /////////////////
 
-  private serializeCallResult = (_data: any): SerializedType => {
+  private serializeCallResult = (
+    _data: any,
+    _functionFragment: FunctionFragment | null = null,
+    _paramType: ParamType | null = null
+  ): SerializedType => {
     // value
     if (typeof _data === 'number' || typeof _data === 'string' || typeof _data === 'boolean') {
       return _data;
     } else if (_data instanceof BigInt || typeof _data === 'bigint') {
+      // big int
       return {
         value: _data.toString(10),
         $type: 'BigInt',
       };
     } else if (Array.isArray(_data)) {
+      // actual array OR struct (analyse function fragment)
+      const struct: SerializedStruct = {};
+      if (!!_functionFragment && _functionFragment.outputs.length > 0) {
+        const os = _functionFragment.outputs;
+        if (!_paramType) {
+          // lowest level
+          if (_functionFragment.outputs.length === 1) {
+            // deeper check...
+            if (os[0].baseType === 'array') {
+              // array
+              return {
+                value: _data.map(i =>
+                  this.serializeCallResult(i, _functionFragment, os[0].arrayChildren)
+                ) as SerializedType[],
+                $type: 'array',
+              };
+            } else if (os[0].baseType === 'tuple') {
+              // tuple
+              const components = os[0].components!;
+              for (let n = 0; n < components.length; n++) {
+                const c = components[n];
+                const value = this.serializeCallResult(_data[n], _functionFragment, c);
+                struct[c.name] = value;
+              }
+              return {
+                value: struct,
+                $keys: Object.fromEntries(components.map((c, i) => [c.name, i])), // map keys to index
+                $type: 'struct',
+              };
+            }
+
+            // not implemented?
+            throw new Error(`Single tuple output not supported yet: ${JSON.stringify(_functionFragment.outputs)}`);
+          } else {
+            // multiple entries, check if names are available
+            const keys: { [name: string]: number } = {};
+            for (let n = 0; n < os.length; n++) {
+              const o = os[n];
+              const value = this.serializeCallResult(_data[n], _functionFragment, o);
+              if (o.name) {
+                struct[o.name] = value;
+                keys[o.name] = n;
+              } else struct[n] = value;
+            }
+            return {
+              value: struct,
+              $keys: keys,
+              $type: 'struct',
+            };
+          }
+        } else {
+          // sub type
+          if (_paramType.baseType === 'array') {
+            // array
+            return {
+              value: _data.map(i =>
+                this.serializeCallResult(i, _functionFragment, _paramType.arrayChildren)
+              ) as SerializedType[],
+              $type: 'array',
+            };
+          } else if (_paramType.baseType === 'tuple') {
+            // tuple
+            const components = _paramType.components!;
+            for (let n = 0; n < components.length; n++) {
+              const c = components[n];
+              const value = this.serializeCallResult(_data[n], _functionFragment, c);
+              struct[c.name] = value;
+            }
+            return {
+              value: struct,
+              $keys: Object.fromEntries(components.map((c, i) => [c.name, i])), // map keys to index
+              $type: 'struct',
+            };
+          }
+
+          // not implemented?
+          throw new Error(`Sub type output not supported yet: ${JSON.stringify(_paramType)}`);
+        }
+      }
+
+      // default to array
       return {
         value: _data.map(i => this.serializeCallResult(i)) as SerializedType[],
         $type: 'array',
@@ -487,6 +586,7 @@ export class DeployHelper {
       for (let k of keys) struct[k] = this.serializeCallResult(_data[k]);
       return {
         value: struct,
+        $keys: Object.fromEntries(keys.map((k, i) => [k, i])), // map keys to index
         $type: 'struct',
       };
     }
@@ -507,9 +607,16 @@ export class DeployHelper {
           const obj: SerializedStruct = {};
           const struct = ct.value as SerializedStruct;
           const keys = Object.keys(struct);
-          for (let k of keys) {
-            obj[k] = this.deserializeCallResult(struct[k]);
+
+          // normal names keys
+          for (let k of keys) obj[k] = this.deserializeCallResult(struct[k]);
+
+          // indexed keys
+          if (!!ct.$keys) {
+            const keyIndexMap = Object.keys(ct.$keys);
+            for (let k of keyIndexMap) obj[ct.$keys[k]] = obj[k];
           }
+
           return obj;
         }
       }
@@ -549,16 +656,19 @@ export class DeployHelper {
         if (_merge) {
           // merge & add alternativeInfoFileID to all items
           this.state.deployments = [
-            ...this.state.deployments.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
-            ...j.deployments,
+            ...this.state.deployments,
+            ...(j.deployments as ContractDeploymentInfo[]).map(i => ({
+              ...i,
+              alternativeInfoFileID: this.alternativeInfoFileID,
+            })),
           ];
           this.state.calls = [
-            ...this.state.calls.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
-            ...j.calls,
+            ...this.state.calls,
+            ...(j.calls as ContractCallInfo[]).map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
           ];
           this.state.sends = [
-            ...this.state.sends.map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
-            ...j.sends,
+            ...this.state.sends,
+            ...(j.sends as ContractSendInfo[]).map(i => ({ ...i, alternativeInfoFileID: this.alternativeInfoFileID })),
           ];
         } else {
           this.state = j;
